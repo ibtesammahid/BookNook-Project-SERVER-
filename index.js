@@ -32,6 +32,7 @@ const upload = multer({
 const mongoclient = await connectToMongoDB();
 const db = mongoclient.db("booknook");
 const addedBooks = db.collection("addedBooks");
+const BorrowedBooks = db.collection("borrowedBooks");
 
 app.post("/upload-image", upload.single("image"), async (req, res) => {
   try {
@@ -98,8 +99,20 @@ app.get('/books/:id', async (req, res) => {
   res.send(book);
 });
 
+app.post('/borrowedbooks', async (req, res) => {
+  const data = req.body;
+  const result = await BorrowedBooks.insertOne(data);
+  res.send({ message: "Book borrowed successfully!", data: result });
+}); 
 
-//http://localhost:5000/addbooks
+app.get('/my-borrows/:email', async (req, res) => {
+  const {email} = req.params;
+  const result = await BorrowedBooks.find({ userEmail:email }).toArray();
+  res.send(result);
+});
+
+
+//http://localhost:5000/my-borrows/
 app.get("/", (req, res) => {
   res.send({ message: "Welcome to Booknook API" });
 });
