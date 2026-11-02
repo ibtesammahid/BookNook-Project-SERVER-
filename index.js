@@ -99,15 +99,76 @@ app.get('/books/:id', async (req, res) => {
   res.send(book);
 });
 
-app.post('/borrowedbooks', async (req, res) => {
-  const data = req.body;
-  const result = await BorrowedBooks.insertOne(data);
-  res.send({ message: "Book borrowed successfully!", data: result });
-}); 
+// app.post('/borrowedbooks', async (req, res) => {
+//   const data = req.body;
+//   const result = await BorrowedBooks.insertOne(data);
+//   res.send({ message: "Book borrowed successfully!", data: result });
+// }); 
+
+app.post("/borrowedbooks", async (req, res) => {
+  try {
+    const { bookId, bookTitle, bookImage, userName, userEmail, quantity } = req.body;
+
+     const borrowQuantity = Number(quantity);
+
+    if (!ObjectId.isValid(bookId) || !Number.isInteger(borrowQuantity) || borrowQuantity < 1) {
+      return res.status(400).send({ message: "Invalid book or quantity." });
+    }
+
+    // Decrease copies only if enough are available.
+    const updatedBook = await addedBooks.findOneAndUpdate(
+      {
+        _id: new ObjectId(bookId),
+        totalCopies: { $gte: borrowQuantity },
+      },
+      {
+        $inc: { totalCopies: -borrowQuantity },
+      },
+      { returnDocument: "after" }
+    );
+
+    if (!updatedBook) {
+      return res.status(400).send({
+        message: "Not enough copies available.",
+      });
+    }
+
+    const borrowDate = new Date();
+    const returnDate = new Date(borrowDate);
+    returnDate.setDate(returnDate.getDate() + 14); // due in 14 days
+
+    const borrowedBook = {
+      bookId,
+      bookTitle,
+      bookImage,
+      userName,
+      userEmail,
+      quantity,
+      borrowDate,
+      returnDate,
+    };
+
+    const result = await BorrowedBooks.insertOne(borrowedBook);
+
+    res.status(201).send({
+      message: "Book borrowed successfully!",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Borrow error:", error);
+    res.status(500).send({ message: "Could not borrow this book." });
+  }
+});
 
 app.get('/my-borrows/:email', async (req, res) => {
   const {email} = req.params;
   const result = await BorrowedBooks.find({ userEmail:email }).toArray();
+  res.send(result);
+});
+
+app.delete('/my-borrows/:id', async (req, res) => {
+  const { id } = req.params;
+  const result = await BorrowedBooks.deleteOne({ _id: id});
   res.send(result);
 });
 
