@@ -124,6 +124,11 @@ app.patch('/books/:id', async (req, res) => {
   res.json(result)
 })
 
+app.delete('/books/:id', async (req, res) => {
+  const { id } = req.params;
+  const result = await addedBooks.deleteOne({ _id: new ObjectId(id) });
+  res.send(result);
+})
 
 
 // app.post('/borrowedbooks', async (req, res) => {
@@ -195,7 +200,7 @@ app.get('/my-borrows/:email', async (req, res) => {
 
 app.delete('/my-borrows/:id', async (req, res) => {
   const { id } = req.params;
-  const result = await BorrowedBooks.deleteOne({ _id: id});
+  const result = await BorrowedBooks.deleteOne({ _id: new ObjectId(id) });
   res.send(result);
 });
 
