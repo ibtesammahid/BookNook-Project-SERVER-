@@ -92,12 +92,39 @@ app.get('/books', async (req, res) => {
   res.send(books);
 })
 
+app.get("/my-books/:email", async (req, res) => {
+  try {
+    const email = decodeURIComponent(req.params.email);
+
+    const books = await addedBooks
+      .find({ userEmail: email })
+      .toArray();
+
+    res.send(books);
+  } catch (error) {
+    console.error("Failed to get user's books:", error);
+    res.status(500).send({ message: "Could not load your books." });
+  }
+});
+
 app.get('/books/:id', async (req, res) => {
   const { id } = req.params;
   console.log(id);
   const book = await addedBooks.findOne({ _id: new ObjectId(id) });
   res.send(book);
 });
+
+app.patch('/books/:id', async (req, res) => {
+  const { id } = req.params;
+  const updatedData = req.body;
+  const result = await addedBooks.updateOne(
+    { _id: new ObjectId(id)},
+    { $set: updatedData }
+  )
+  res.json(result)
+})
+
+
 
 // app.post('/borrowedbooks', async (req, res) => {
 //   const data = req.body;
@@ -173,7 +200,7 @@ app.delete('/my-borrows/:id', async (req, res) => {
 });
 
 
-//http://localhost:5000/my-borrows/
+//http://localhost:5000/books/ibtesammahid@gmail.com
 app.get("/", (req, res) => {
   res.send({ message: "Welcome to Booknook API" });
 });
