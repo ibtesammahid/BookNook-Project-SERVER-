@@ -1,6 +1,6 @@
 import express from "express";
 import { MongoClient, ObjectId } from "mongodb";
-import 'dotenv/config';
+import "dotenv/config";
 import cors from "cors";
 import multer from "multer";
 
@@ -44,17 +44,14 @@ app.post("/upload-image", upload.single("image"), async (req, res) => {
 
     const formData = new FormData();
 
-    formData.append(
-      "image",
-      req.file.buffer.toString("base64")
-    );
+    formData.append("image", req.file.buffer.toString("base64"));
 
     const imgbbResponse = await fetch(
       `https://api.imgbb.com/1/upload?key=${process.env.IMGBB_API_KEY}`,
       {
         method: "POST",
         body: formData,
-      }
+      },
     );
 
     const result = await imgbbResponse.json();
@@ -79,26 +76,29 @@ app.post("/upload-image", upload.single("image"), async (req, res) => {
 });
 
 app.post("/addbooks", async (req, res) => {
-    const data = req.body;
-    const result = await addedBooks.insertOne(data);
-    console.log(data);
-    console.log(result);
-    res.send({ message: "Server Is Running Fine!!!" })
-})
+  const data = req.body;
+  const result = await addedBooks.insertOne(data);
+  console.log(data);
+  console.log(result);
+  res.send({ message: "Server Is Running Fine!!!" });
+});
 
-app.get('/books', async (req, res) => {
+app.get("/books", async (req, res) => {
   const books = await addedBooks.find().toArray();
   console.log(books);
   res.send(books);
-})
+});
+app.get("/new-arrivals", async (req, res) => {
+  const books = await addedBooks.find({}).sort({ _id: -1 }).limit(6).toArray();
+
+  res.send(books);
+});
 
 app.get("/my-books/:email", async (req, res) => {
   try {
     const email = decodeURIComponent(req.params.email);
 
-    const books = await addedBooks
-      .find({ userEmail: email })
-      .toArray();
+    const books = await addedBooks.find({ userEmail: email }).toArray();
 
     res.send(books);
   } catch (error) {
@@ -107,43 +107,53 @@ app.get("/my-books/:email", async (req, res) => {
   }
 });
 
-app.get('/books/:id', async (req, res) => {
+app.get("/books/:id", async (req, res) => {
   const { id } = req.params;
   console.log(id);
   const book = await addedBooks.findOne({ _id: new ObjectId(id) });
   res.send(book);
 });
 
-app.patch('/books/:id', async (req, res) => {
+app.patch("/books/:id", async (req, res) => {
   const { id } = req.params;
   const updatedData = req.body;
   const result = await addedBooks.updateOne(
-    { _id: new ObjectId(id)},
-    { $set: updatedData }
-  )
-  res.json(result)
-})
+    { _id: new ObjectId(id) },
+    { $set: updatedData },
+  );
+  res.json(result);
+});
 
-app.delete('/books/:id', async (req, res) => {
+app.delete("/books/:id", async (req, res) => {
   const { id } = req.params;
   const result = await addedBooks.deleteOne({ _id: new ObjectId(id) });
   res.send(result);
-})
-
-
-// app.post('/borrowedbooks', async (req, res) => {
-//   const data = req.body;
-//   const result = await BorrowedBooks.insertOne(data);
-//   res.send({ message: "Book borrowed successfully!", data: result });
-// }); 
+});
 
 app.post("/borrowedbooks", async (req, res) => {
   try {
-    const { bookId, bookTitle, bookImage, userName, userEmail, quantity } = req.body;
+    const { bookId, bookTitle, bookImage, userName, userEmail, quantity } =
+      req.body;
 
-     const borrowQuantity = Number(quantity);
+    const existingBorrow = await borrowedBooks.findOne({
+      bookId,
+      userEmail,
+      status: "borrowed",
+    });
 
-    if (!ObjectId.isValid(bookId) || !Number.isInteger(borrowQuantity) || borrowQuantity < 1) {
+    if (existingBorrow) {
+      return res.status(409).json({
+        message: "You have already borrowed this book.",
+      });
+    }
+
+    const borrowQuantity = Number(quantity);
+
+    if (
+      !ObjectId.isValid(bookId) ||
+      !Number.isInteger(borrowQuantity) ||
+      borrowQuantity < 1
+    ) {
       return res.status(400).send({ message: "Invalid book or quantity." });
     }
 
@@ -156,7 +166,7 @@ app.post("/borrowedbooks", async (req, res) => {
       {
         $inc: { totalCopies: -borrowQuantity },
       },
-      { returnDocument: "after" }
+      { returnDocument: "after" },
     );
 
     if (!updatedBook) {
@@ -192,18 +202,17 @@ app.post("/borrowedbooks", async (req, res) => {
   }
 });
 
-app.get('/my-borrows/:email', async (req, res) => {
-  const {email} = req.params;
-  const result = await BorrowedBooks.find({ userEmail:email }).toArray();
+app.get("/my-borrows/:email", async (req, res) => {
+  const { email } = req.params;
+  const result = await BorrowedBooks.find({ userEmail: email }).toArray();
   res.send(result);
 });
 
-app.delete('/my-borrows/:id', async (req, res) => {
+app.delete("/my-borrows/:id", async (req, res) => {
   const { id } = req.params;
   const result = await BorrowedBooks.deleteOne({ _id: new ObjectId(id) });
   res.send(result);
 });
-
 
 //http://localhost:5000/books/ibtesammahid@gmail.com
 app.get("/", (req, res) => {
