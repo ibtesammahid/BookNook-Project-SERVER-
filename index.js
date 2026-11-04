@@ -3,6 +3,7 @@ import { MongoClient, ObjectId } from "mongodb";
 import "dotenv/config";
 import cors from "cors";
 import multer from "multer";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 
 const app = express();
 const PORT = 5000;
@@ -34,7 +35,51 @@ const db = mongoclient.db("booknook");
 const addedBooks = db.collection("addedBooks");
 const BorrowedBooks = db.collection("borrowedBooks");
 
-app.post("/upload-image", upload.single("image"), async (req, res) => {
+// ==========================================
+// JWT verification
+// Tokens are issued by better-auth (`jwt()` plugin) in the Next.js app and
+// verified here against its public JWKS. Defaults match the local dev setup.
+// ==========================================
+
+const AUTH_JWKS_URL =
+  process.env.AUTH_JWKS_URL ?? "http://localhost:3000/api/auth/jwks";
+const AUTH_ISSUER = process.env.AUTH_ISSUER ?? "http://localhost:3000";
+
+const jwks = createRemoteJWKSet(new URL(AUTH_JWKS_URL));
+
+// Requires a valid `Authorization: Bearer <jwt>` header.
+// On success the verified user is attached to `req.user`.
+async function requireAuth(req, res, next) {
+  const [scheme, token] = (req.headers.authorization ?? "").split(" ");
+
+  if (scheme !== "Bearer" || !token) {
+    return res
+      .status(401)
+      .send({ message: "Please sign in to perform this action." });
+  }
+
+  try {
+    const { payload } = await jwtVerify(token, jwks, {
+      issuer: AUTH_ISSUER,
+      audience: AUTH_ISSUER,
+    });
+
+    req.user = {
+      id: payload.sub,
+      email: payload.email,
+      name: payload.name,
+    };
+
+    return next();
+  } catch (error) {
+    console.error("JWT verification failed:", error);
+    return res
+      .status(401)
+      .send({ message: "Your session is invalid or has expired." });
+  }
+}
+
+app.post("/upload-image", requireAuth, upload.single("image"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).send({
@@ -75,8 +120,13 @@ app.post("/upload-image", upload.single("image"), async (req, res) => {
   }
 });
 
-app.post("/addbooks", async (req, res) => {
-  const data = req.body;
+app.post("/addbooks", requireAuth, async (req, res) => {
+  // Ownership always comes from the verified token, never from the body.
+  const data = {
+    ...req.body,
+    userEmail: req.user.email,
+    userName: req.user.name,
+  };
   const result = await addedBooks.insertOne(data);
   console.log(data);
   console.log(result);
@@ -91,16 +141,22 @@ app.get("/books", async (req, res) => {
 app.get("/new-arrivals", async (req, res) => {
   const books = await addedBooks.find({}).sort({ _id: -1 }).limit(6).toArray();
 
-  res.send(books);
+  res.json(books);
 });
 
-app.get("/my-books/:email", async (req, res) => {
+app.get("/my-books/:email", requireAuth, async (req, res) => {
   try {
     const email = decodeURIComponent(req.params.email);
 
+    if (email !== req.user.email) {
+      return res
+        .status(403)
+        .send({ message: "You can only view your own books." });
+    }
+
     const books = await addedBooks.find({ userEmail: email }).toArray();
 
-    res.send(books);
+    res.json(books);
   } catch (error) {
     console.error("Failed to get user's books:", error);
     res.status(500).send({ message: "Could not load your books." });
@@ -111,12 +167,30 @@ app.get("/books/:id", async (req, res) => {
   const { id } = req.params;
   console.log(id);
   const book = await addedBooks.findOne({ _id: new ObjectId(id) });
-  res.send(book);
+  res.json(book);
 });
 
-app.patch("/books/:id", async (req, res) => {
+app.patch("/books/:id", requireAuth, async (req, res) => {
   const { id } = req.params;
-  const updatedData = req.body;
+
+  if (!ObjectId.isValid(id)) {
+    return res.status(400).send({ message: "Invalid book id." });
+  }
+
+  const book = await addedBooks.findOne({ _id: new ObjectId(id) });
+
+  if (!book) {
+    return res.status(404).send({ message: "Book not found." });
+  }
+
+  if (book.userEmail !== req.user.email) {
+    return res
+      .status(403)
+      .send({ message: "You can only edit your own books." });
+  }
+
+  // Keep ownership tied to the token even if the body tries to change it.
+  const updatedData = { ...req.body, userEmail: req.user.email };
   const result = await addedBooks.updateOne(
     { _id: new ObjectId(id) },
     { $set: updatedData },
@@ -124,18 +198,38 @@ app.patch("/books/:id", async (req, res) => {
   res.json(result);
 });
 
-app.delete("/books/:id", async (req, res) => {
+app.delete("/books/:id", requireAuth, async (req, res) => {
   const { id } = req.params;
+
+  if (!ObjectId.isValid(id)) {
+    return res.status(400).send({ message: "Invalid book id." });
+  }
+
+  const book = await addedBooks.findOne({ _id: new ObjectId(id) });
+
+  if (!book) {
+    return res.status(404).send({ message: "Book not found." });
+  }
+
+  if (book.userEmail !== req.user.email) {
+    return res
+      .status(403)
+      .send({ message: "You can only delete your own books." });
+  }
+
   const result = await addedBooks.deleteOne({ _id: new ObjectId(id) });
-  res.send(result);
+  res.json(result);
 });
 
-app.post("/borrowedbooks", async (req, res) => {
+app.post("/borrowedbooks", requireAuth, async (req, res) => {
   try {
-    const { bookId, bookTitle, bookImage, userName, userEmail, quantity } =
-      req.body;
+    const { bookId, bookTitle, bookImage, quantity } = req.body;
 
-    const existingBorrow = await borrowedBooks.findOne({
+    // Identity always comes from the verified token, never from the body.
+    const userEmail = req.user.email;
+    const userName = req.user.name;
+
+    const existingBorrow = await BorrowedBooks.findOne({
       bookId,
       userEmail,
       status: "borrowed",
@@ -202,16 +296,40 @@ app.post("/borrowedbooks", async (req, res) => {
   }
 });
 
-app.get("/my-borrows/:email", async (req, res) => {
+app.get("/my-borrows/:email", requireAuth, async (req, res) => {
   const { email } = req.params;
+
+  if (email !== req.user.email) {
+    return res
+      .status(403)
+      .send({ message: "You can only view your own borrows." });
+  }
+
   const result = await BorrowedBooks.find({ userEmail: email }).toArray();
-  res.send(result);
+  res.json(result);
 });
 
-app.delete("/my-borrows/:id", async (req, res) => {
+app.delete("/my-borrows/:id", requireAuth, async (req, res) => {
   const { id } = req.params;
+
+  if (!ObjectId.isValid(id)) {
+    return res.status(400).send({ message: "Invalid borrow id." });
+  }
+
+  const borrow = await BorrowedBooks.findOne({ _id: new ObjectId(id) });
+
+  if (!borrow) {
+    return res.status(404).send({ message: "Borrow record not found." });
+  }
+
+  if (borrow.userEmail !== req.user.email) {
+    return res
+      .status(403)
+      .send({ message: "You can only return your own borrows." });
+  }
+
   const result = await BorrowedBooks.deleteOne({ _id: new ObjectId(id) });
-  res.send(result);
+  res.json(result);
 });
 
 //http://localhost:5000/books/ibtesammahid@gmail.com
