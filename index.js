@@ -14,7 +14,13 @@ const allowedOrigins = [
   "http://localhost:3000",
 ];
 app.use(cors({
-    origin: allowedOrigins,
+        origin(origin, callback) {
+      if (!origin || allowedOrigins.has(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS blocked origin: ${origin}`));
+      }
+    },
     methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   }));
