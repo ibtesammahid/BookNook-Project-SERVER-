@@ -9,7 +9,15 @@ const app = express();
 const PORT = 5000;
 
 // Enable CORS for all routes
-app.use(cors());
+const allowedOrigins = [
+  "https://booknook-delta-blond.vercel.app",
+  "http://localhost:3000",
+];
+app.use(cors({
+    origin: allowedOrigins,
+    methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  }));
 app.use(express.json());
 
 const client = new MongoClient(process.env.MONGODB_URI);
@@ -42,7 +50,7 @@ const BorrowedBooks = db.collection("borrowedBooks");
 // ==========================================
 
 const AUTH_JWKS_URL =
-  process.env.AUTH_JWKS_URL ?? "http://localhost:3000/api/auth/jwks";
+  process.env.AUTH_JWKS_URL ?? `${process.env.CLIENT_URL}/api/auth/jwks`;
 const AUTH_ISSUER = process.env.AUTH_ISSUER ?? "http://localhost:3000";
 
 const jwks = createRemoteJWKSet(new URL(AUTH_JWKS_URL));
@@ -341,3 +349,5 @@ app.get("/", (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
+
+export default app;
