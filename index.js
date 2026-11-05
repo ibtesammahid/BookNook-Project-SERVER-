@@ -140,6 +140,7 @@ app.post("/addbooks", requireAuth, async (req, res) => {
     ...req.body,
     userEmail: req.user.email,
     userName: req.user.name,
+    createdAt: new Date(),
   };
   const result = await addedBooks.insertOne(data);
   console.log(data);
