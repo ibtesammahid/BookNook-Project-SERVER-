@@ -225,14 +225,15 @@ app.post("/borrowedbooks", requireAuth, async (req, res) => {
   try {
     const { bookId, bookTitle, bookImage, quantity } = req.body;
 
-    // Identity always comes from the verified token, never from the body.
+   // Identity always comes from the verified token, never from the body.
     const userEmail = req.user.email;
     const userName = req.user.name;
 
+    // A borrow record only exists while the book is out (returns delete it),
+    // so any existing record for this user + book means an active borrow.
     const existingBorrow = await BorrowedBooks.findOne({
       bookId,
       userEmail,
-      status: "borrowed",
     });
 
     if (existingBorrow) {
