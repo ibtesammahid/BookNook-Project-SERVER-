@@ -82,22 +82,24 @@ MONGODB_URI=your_mongodb_connection_string
 IMGBB_API_KEY=your_imgbb_api_key
 
 CLIENT_URL=http://localhost:3000
-AUTH_ISSUER=http://localhost:3000
 AUTH_JWKS_URL=http://localhost:3000/api/auth/jwks
+# Comma-separated JWT issuer allow-list (defaults to http://localhost:3000).
+# Production example: AUTH_ISSUERS=https://your-frontend.vercel.app
+AUTH_ISSUERS=http://localhost:3000
 ```
 
 Use your actual credentials and deployment URLs. Do not commit environment files or secrets to GitHub.
 
 ### 4. Start the backend
 
-From the backend project directory, install dependencies and start the server using the scripts defined in its `package.json`.
-
-For example:
+From the backend project directory:
 
 ```bash
 npm install
-npm run dev
+node index.js
 ```
+
+The API listens on `http://localhost:5000`.
 
 ### 5. Start the frontend
 
@@ -134,12 +136,13 @@ The backend is maintained separately and provides the API endpoints used by the 
 | POST | `/addbooks` | Add a book |
 | PATCH | `/books/:id` | Update a book |
 | DELETE | `/books/:id` | Delete a book |
+| GET | `/my-books/:email` | Get the books added by a user (own email only) |
 | POST | `/borrowedbooks` | Borrow a book |
 | GET | `/my-borrows/:email` | Get a user's borrowed books |
 | DELETE | `/my-borrows/:id` | Return a borrowed book |
 | POST | `/upload-image` | Upload a book cover image |
 
-Some endpoints require the user to be authenticated.
+Protected endpoints require a valid Better Auth JWT in an `Authorization: Bearer <token>` header. The server verifies each token (issuer/audience allow-list) against the JWKS published by the frontend at `/api/auth/jwks`, and ownership is always taken from the verified token — never from the request body.
 
 ## Author
 
