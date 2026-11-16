@@ -14,9 +14,21 @@ const allowedOrigins = [
   "https://booknook-o3tr3cmvw-monster-935d.vercel.app",
   "http://localhost:3000",
 ];
+
+// Vercel serves each deploy from a unique `booknook-<hash>-<team>.vercel.app`
+// URL (and previews from `booknook-git-<branch>-<team>.vercel.app`) before the
+// alias catches up — match those by pattern so API calls from a fresh
+// deployment aren't CORS-blocked. Explicit aliases/local origins stay listed.
+const vercelDeployOrigin =
+  /^https:\/\/booknook(?:-[a-z0-9][a-z0-9-]*)?-monster-935d\.vercel\.app$/i;
+
 app.use(cors({
         origin(origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (
+        !origin ||
+        allowedOrigins.includes(origin) ||
+        vercelDeployOrigin.test(origin)
+      ) {
         callback(null, true);
       } else {
         callback(new Error(`CORS blocked origin: ${origin}`));
