@@ -58,10 +58,34 @@ const BorrowedBooks = db.collection("borrowedBooks");
 // ==========================================
 
 const AUTH_JWKS_URL =
-  process.env.AUTH_JWKS_URL ?? `${process.env.CLIENT_URL}/api/auth/jwks`;
-const AUTH_ISSUER = process.env.AUTH_ISSUER ?? "http://localhost:3000";
+  process.env.AUTH_JWKS_URL ??
+  `${process.env.CLIENT_URL ?? "http://localhost:3000"}/api/auth/jwks`;
 
-const jwks = createRemoteJWKSet(new URL(AUTH_JWKS_URL));
+// Comma-separated issuer allow-list (also used as the audience list).
+// Without env, this defaults to the local dev origin so no .env change is
+// needed for `node index.js` + the local frontend.
+const AUTH_ISSUERS = (
+  process.env.AUTH_ISSUERS ?? "http://localhost:3000"
+)
+  .split(",")
+  .map((issuer) => issuer.trim())
+  .filter(Boolean);
+
+// Built lazily on the first authenticated request so a bad URL/env surfaces
+// inside requireAuth (where it can be reported) instead of crashing import.
+let jwks;
+function getJwks() {
+  return (jwks ??= createRemoteJWKSet(new URL(AUTH_JWKS_URL)));
+}
+
+// Network failures reaching the JWKS endpoint are server misconfigurations,
+// not bad tokens — they must not masquerade as 401s.
+const JWKS_NETWORK_ERRORS = new Set([
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ETIMEDOUT",
+]);
 
 // Requires a valid `Authorization: Bearer <jwt>` header.
 // On success the verified user is attached to `req.user`.
@@ -75,9 +99,9 @@ async function requireAuth(req, res, next) {
   }
 
   try {
-    const { payload } = await jwtVerify(token, jwks, {
-      issuer: AUTH_ISSUER,
-      audience: AUTH_ISSUER,
+    const { payload } = await jwtVerify(token, getJwks(), {
+      issuer: AUTH_ISSUERS,
+      audience: AUTH_ISSUERS,
     });
 
     req.user = {
@@ -88,6 +112,20 @@ async function requireAuth(req, res, next) {
 
     return next();
   } catch (error) {
+    // fetch failures surface as `TypeError: fetch failed` with the socket/DNS
+    // error in `.cause` (possibly an AggregateError for multi-address hosts).
+    const code =
+      error?.cause?.code ??
+      error?.code ??
+      error?.cause?.errors?.[0]?.code;
+
+    if (JWKS_NETWORK_ERRORS.has(code)) {
+      console.error(`JWKS unreachable: ${AUTH_JWKS_URL}`, error);
+      return res
+        .status(500)
+        .send({ message: "Authentication service is unavailable." });
+    }
+
     console.error("JWT verification failed:", error);
     return res
       .status(401)
