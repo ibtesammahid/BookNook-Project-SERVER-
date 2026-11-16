@@ -6,21 +6,23 @@ import multer from "multer";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
 const app = express();
-const PORT = 5000;
+const PORT = 5000 ;
 
 // Enable CORS for all routes
 const allowedOrigins = [
   "https://booknook-delta-blond.vercel.app",
+  "https://booknook-o3tr3cmvw-monster-935d.vercel.app",
   "http://localhost:3000",
 ];
 app.use(cors({
         origin(origin, callback) {
-      if (!origin || allowedOrigins.has(origin)) {
+      if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
         callback(new Error(`CORS blocked origin: ${origin}`));
       }
     },
+    credentials: true,
     methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   }));
